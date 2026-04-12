@@ -1,0 +1,15 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Audio files
+*.mp3
+*.wav
+*.webm
+
+# Generated files
+spectrogram.png
+peaks.png

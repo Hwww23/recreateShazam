@@ -1,0 +1,218 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #0f0f1a;
+  color: #ffffff;
+  font-family: 'Segoe UI', sans-serif;
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 40px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+}
+
+h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #a78bfa, #60a5fa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+  color: #888;
+  margin-top: -24px;
+  font-size: 0.9rem;
+}
+
+/* ── Record button ── */
+.record-btn {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  background: linear-gradient(135deg, #7c3aed, #2563eb);
+  color: white;
+  box-shadow: 0 0 40px rgba(124, 58, 237, 0.4);
+}
+
+.record-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 60px rgba(124, 58, 237, 0.6);
+}
+
+.record-btn.recording {
+  background: linear-gradient(135deg, #dc2626, #ea580c);
+  box-shadow: 0 0 60px rgba(220, 38, 38, 0.6);
+  animation: pulse 1.2s infinite;
+}
+
+.record-btn.loading {
+  background: linear-gradient(135deg, #374151, #1f2937);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.07); }
+}
+
+/* ── Upload ── */
+.upload-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #888;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 8px 16px;
+  border: 1px solid #333;
+  border-radius: 20px;
+  transition: all 0.2s;
+}
+
+.upload-label:hover {
+  color: #fff;
+  border-color: #666;
+}
+
+.upload-label input {
+  display: none;
+}
+
+/* ── Status ── */
+.status {
+  color: #a78bfa;
+  font-size: 0.9rem;
+  min-height: 20px;
+}
+
+/* ── Result card ── */
+.result-card {
+  width: 100%;
+  background: #1a1a2e;
+  border: 1px solid #2d2d4e;
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: fadeIn 0.4s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.result-card .song-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.result-card .song-artist {
+  color: #a78bfa;
+  font-size: 1rem;
+}
+
+.result-meta {
+  display: flex;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.result-meta span {
+  background: #2d2d4e;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  color: #aaa;
+}
+
+.no-match {
+  color: #ef4444;
+  font-size: 0.95rem;
+}
+
+/* ── Song library ── */
+.library {
+  width: 100%;
+}
+
+.library h2 {
+  font-size: 1rem;
+  color: #888;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.song-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.song-item {
+  background: #1a1a2e;
+  border: 1px solid #2d2d4e;
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.song-item .title { font-weight: 600; }
+.song-item .artist { color: #888; font-size: 0.8rem; }
+
+/* ── Ingest ── */
+.ingest-btn {
+  background: transparent;
+  border: 1px solid #7c3aed;
+  color: #a78bfa;
+  padding: 8px 20px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.ingest-btn:hover {
+  background: #7c3aed22;
+}
+
+.ingest-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
