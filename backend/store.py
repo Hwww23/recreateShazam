@@ -1,5 +1,6 @@
 from sqlalchemy import text
 from database import get_connection
+from cache import get_cached_hashes, cache_hashes
 
 def insert_song(title, artist="", album="", duration=0.0):
     """
@@ -45,18 +46,60 @@ def lookup_hashes(hashes):
 
     Returns a list of (hash, db_time_index, song_id) tuples.
     """
+    # hash_list = [h for h, t in hashes]
+
+    # with get_connection() as conn:
+    #     result = conn.execute(
+    #         text("""
+    #             SELECT hash, time_index, song_id
+    #             FROM fingerprints
+    #             WHERE hash = ANY(:hashes)
+    #         """),
+    #         {"hashes": hash_list}
+    #     )
+    #     return result.fetchall()
+
+    """
+    Look up hashes — check Redis first, fall back to PostgreSQL.
+    """
     hash_list = [h for h, t in hashes]
 
-    with get_connection() as conn:
-        result = conn.execute(
-            text("""
-                SELECT hash, time_index, song_id
-                FROM fingerprints
-                WHERE hash = ANY(:hashes)
-            """),
-            {"hashes": hash_list}
-        )
-        return result.fetchall()
+    # Step 1 — check cache
+    cached = get_cached_hashes(hash_list)
+    cached_hits = set(cached.keys())
+    missed = [h for h in hash_list if h not in cached_hits]
+
+    print(f"Cache hits: {len(cached_hits)}, misses: {len(missed)}")
+
+    # Step 2 — query PostgreSQL for cache misses only
+    db_results = []
+    if missed:
+        with get_connection() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT hash, time_index, song_id
+                    FROM fingerprints
+                    WHERE hash = ANY(:hashes)
+                """),
+                {"hashes": missed}
+            )
+            db_results = result.fetchall()
+
+        # Step 3 — populate cache with what we just fetched
+        if db_results:
+            cache_hashes(db_results)
+
+    # Step 4 — combine cached + db results into one flat list
+    all_results = []
+
+    for h, values in cached.items():
+        for db_time, song_id in values:
+            all_results.append((h, db_time, song_id))
+
+    for row in db_results:
+        all_results.append((row[0], row[1], row[2]))
+
+    return all_results
 
 def get_song(song_id):
     """
