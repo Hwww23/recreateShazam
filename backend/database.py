@@ -5,8 +5,9 @@ from sqlalchemy import create_engine, text
 # DATABASE_URL = "postgresql://postgres:123456@localhost:5432/soundmatch"
 
 DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://postgres:YOUR_PASSWORD@localhost:5432/soundmatch"
+    # "DATABASE_URL",
+    "SHARD_0_URL",
+    "postgresql://postgres:postgres@localhost:5433/soundmatch"
 )
 
 engine = create_engine(DATABASE_URL)

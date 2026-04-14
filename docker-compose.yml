@@ -1,6 +1,6 @@
 services:
 
-  db:
+  db_0:
     image: postgres:16
     environment:
       POSTGRES_USER: postgres
@@ -8,23 +8,65 @@ services:
       POSTGRES_DB: soundmatch
     volumes:
       # persist database data so it survives container restarts
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_0:/var/lib/postgresql/data
       # run our init.sql on first startup
       - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5433:5432"  # expose on 5433 to avoid clashing with your local postgres
 
+  db_1:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: soundmatch
+    volumes:
+      - postgres_data_1:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5434:5432"
+
+  db_2:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: soundmatch
+    volumes:
+      - postgres_data_2:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5435:5432"
+
+  db_3:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: soundmatch
+    volumes:
+      - postgres_data_3:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5436:5432"
+
   backend:
     build: ./backend
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/soundmatch
+      SHARD_0_URL: postgresql://postgres:postgres@db_0:5432/soundmatch
+      SHARD_1_URL: postgresql://postgres:postgres@db_1:5432/soundmatch
+      SHARD_2_URL: postgresql://postgres:postgres@db_2:5432/soundmatch
+      SHARD_3_URL: postgresql://postgres:postgres@db_3:5432/soundmatch
       REDIS_URL: redis://redis:6379
     volumes:
       - uploads_tmp:/tmp/uploads
     ports:
       - "8000:8000"
     depends_on:
-      - db
+      - db_0
+      - db_1
+      - db_2
+      - db_3
       - redis
     # wait for postgres to be ready before starting
     command: >
@@ -33,12 +75,18 @@ services:
   worker:
     build: ./backend
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/soundmatch
+      SHARD_0_URL: postgresql://postgres:postgres@db_0:5432/soundmatch
+      SHARD_1_URL: postgresql://postgres:postgres@db_1:5432/soundmatch
+      SHARD_2_URL: postgresql://postgres:postgres@db_2:5432/soundmatch
+      SHARD_3_URL: postgresql://postgres:postgres@db_3:5432/soundmatch
       REDIS_URL: redis://redis:6379
     volumes:
       - uploads_tmp:/tmp/uploads
     depends_on:
-      - db
+      - db_0
+      - db_1
+      - db_2
+      - db_3
       - redis
     command: >
       sh -c "sleep 5 && celery -A tasks worker --loglevel=info --concurrency=2"
@@ -56,5 +104,8 @@ services:
       - "6379:6379"
 
 volumes:
-  postgres_data:
+  postgres_data_0:
+  postgres_data_1:
+  postgres_data_2:
+  postgres_data_3:
   uploads_tmp:

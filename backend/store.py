@@ -1,11 +1,13 @@
 from sqlalchemy import text
 from database import get_connection
 from cache import get_cached_hashes, cache_hashes
+from shards import group_hashes_by_shard, get_shard_index, engines
 
 def insert_song(title, artist="", album="", duration=0.0):
-    """
-    Insert a song into the songs table and return its new id.
-    """
+    # """
+    # Insert a song into the songs table and return its new id.
+    # """
+    """Songs always go to shard 0 (where the songs table lives)"""
     with get_connection() as conn:
         result = conn.execute(
             text("""
@@ -21,23 +23,49 @@ def insert_song(title, artist="", album="", duration=0.0):
         return song_id
 
 def insert_fingerprints(song_id, hashes):
-    """
-    Bulk insert all fingerprint hashes for a song.
-    We insert in bulk (all at once) rather than one by one —
-    inserting 45000 rows one at a time would be very slow.
-    """
-    rows = [{"song_id": song_id, "hash": h, "time_index": int(t)} for h, t in hashes]
+    # """
+    # Bulk insert all fingerprint hashes for a song.
+    # We insert in bulk (all at once) rather than one by one —
+    # inserting 45000 rows one at a time would be very slow.
+    # """
+    # rows = [{"song_id": song_id, "hash": h, "time_index": int(t)} for h, t in hashes]
 
-    with get_connection() as conn:
-        conn.execute(
-            text("""
-                INSERT INTO fingerprints (song_id, hash, time_index)
-                VALUES (:song_id, :hash, :time_index)
-            """),
-            rows  # sqlalchemy handles the list as a bulk insert
-        )
-        conn.commit()
-        print(f"Inserted {len(rows)} fingerprints for song_id={song_id}")
+    # with get_connection() as conn:
+    #     conn.execute(
+    #         text("""
+    #             INSERT INTO fingerprints (song_id, hash, time_index)
+    #             VALUES (:song_id, :hash, :time_index)
+    #         """),
+    #         rows  # sqlalchemy handles the list as a bulk insert
+    #     )
+    #     conn.commit()
+    #     print(f"Inserted {len(rows)} fingerprints for song_id={song_id}")
+
+    """
+    Route each fingerprint to the correct shard based on hash prefix.
+    We batch inserts per shard for efficiency.
+    """
+    groups = group_hashes_by_shard(hashes)
+
+    for shard_idx, shard_hashes in groups.items():
+        if not shard_hashes:
+            continue
+
+        rows = [
+            {"song_id": song_id, "hash": h, "time_index": int(t)}
+            for h, t in shard_hashes
+        ]
+
+        with engines[shard_idx].connect() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO fingerprints (song_id, hash, time_index)
+                    VALUES (:song_id, :hash, :time_index)
+                """),
+                rows
+            )
+            conn.commit()
+            print(f"Shard {shard_idx}: inserted {len(rows)} fingerprints")
 
 def lookup_hashes(hashes):
     """
@@ -59,37 +87,91 @@ def lookup_hashes(hashes):
     #     )
     #     return result.fetchall()
 
+    # """
+    # Look up hashes — check Redis first, fall back to PostgreSQL.
+    # """
+    # hash_list = [h for h, t in hashes]
+
+    # # Step 1 — check cache
+    # cached = get_cached_hashes(hash_list)
+    # cached_hits = set(cached.keys())
+    # missed = [h for h in hash_list if h not in cached_hits]
+
+    # print(f"Cache hits: {len(cached_hits)}, misses: {len(missed)}")
+
+    # # Step 2 — query PostgreSQL for cache misses only
+    # db_results = []
+    # if missed:
+    #     with get_connection() as conn:
+    #         result = conn.execute(
+    #             text("""
+    #                 SELECT hash, time_index, song_id
+    #                 FROM fingerprints
+    #                 WHERE hash = ANY(:hashes)
+    #             """),
+    #             {"hashes": missed}
+    #         )
+    #         db_results = result.fetchall()
+
+    #     # Step 3 — populate cache with what we just fetched
+    #     if db_results:
+    #         cache_hashes(db_results)
+
+    # # Step 4 — combine cached + db results into one flat list
+    # all_results = []
+
+    # for h, values in cached.items():
+    #     for db_time, song_id in values:
+    #         all_results.append((h, db_time, song_id))
+
+    # for row in db_results:
+    #     all_results.append((row[0], row[1], row[2]))
+
+    # return all_results
+
     """
-    Look up hashes — check Redis first, fall back to PostgreSQL.
+    Route each hash to its correct shard, query in parallel batches,
+    combine results. Check Redis cache first.
     """
     hash_list = [h for h, t in hashes]
 
-    # Step 1 — check cache
+    # Check cache first
     cached = get_cached_hashes(hash_list)
     cached_hits = set(cached.keys())
-    missed = [h for h in hash_list if h not in cached_hits]
+    missed = [h for h, t in hashes if h not in cached_hits]
 
     print(f"Cache hits: {len(cached_hits)}, misses: {len(missed)}")
 
-    # Step 2 — query PostgreSQL for cache misses only
     db_results = []
-    if missed:
-        with get_connection() as conn:
-            result = conn.execute(
-                text("""
-                    SELECT hash, time_index, song_id
-                    FROM fingerprints
-                    WHERE hash = ANY(:hashes)
-                """),
-                {"hashes": missed}
-            )
-            db_results = result.fetchall()
 
-        # Step 3 — populate cache with what we just fetched
+    if missed:
+        # Group missed hashes by shard
+        missed_hashes = [(h, 0) for h in missed]  # time_index=0 placeholder
+        groups = group_hashes_by_shard(missed_hashes)
+
+        for shard_idx, shard_hashes in groups.items():
+            if not shard_hashes:
+                continue
+
+            shard_hash_list = [h for h, _ in shard_hashes]
+
+            with engines[shard_idx].connect() as conn:
+                result = conn.execute(
+                    text("""
+                        SELECT hash, time_index, song_id
+                        FROM fingerprints
+                        WHERE hash = ANY(:hashes)
+                    """),
+                    {"hashes": shard_hash_list}
+                )
+                rows = result.fetchall()
+                db_results.extend(rows)
+                print(f"Shard {shard_idx}: {len(rows)} matches")
+
         if db_results:
             cache_hashes(db_results)
 
-    # Step 4 — combine cached + db results into one flat list
+    # Combine cached + db results
     all_results = []
 
     for h, values in cached.items():
@@ -102,9 +184,10 @@ def lookup_hashes(hashes):
     return all_results
 
 def get_song(song_id):
-    """
-    Fetch song metadata by id.
-    """
+    # """
+    # Fetch song metadata by id.
+    # """
+    """Songs always fetched from shard 0"""
     with get_connection() as conn:
         result = conn.execute(
             text("SELECT id, title, artist, album, duration FROM songs WHERE id = :id"),

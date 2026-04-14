@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS songs (
 
 CREATE TABLE IF NOT EXISTS fingerprints (
     id          SERIAL PRIMARY KEY,
-    song_id     INTEGER REFERENCES songs(id) ON DELETE CASCADE,
+    song_id     INTEGER NOT NULL,
     hash        VARCHAR(20) NOT NULL,
     time_index  INTEGER NOT NULL
 );
