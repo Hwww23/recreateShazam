@@ -1,9 +1,12 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from tasks import recognize_task, celery_app
+from celery.result import AsyncResult
 import numpy as np
 import librosa
 import tempfile
 import os
+import uuid
 
 from fingerprint import (
     load_audio,
@@ -50,11 +53,17 @@ async def ingest_song(file: UploadFile = File(...)):
 
     # Save the uploaded file to a temp location on disk
     # We need a real file path because librosa.load() needs one
-    suffix = os.path.splitext(file.filename)[1]  # get .mp3 or .wav
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        contents = await file.read()
-        tmp.write(contents)
-        tmp_path = tmp.name
+    # suffix = os.path.splitext(file.filename)[1]  # get .mp3 or .wav
+    # with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+    #     contents = await file.read()
+    #     tmp.write(contents)
+    #     tmp_path = tmp.name
+
+    suffix = os.path.splitext(file.filename)[1]
+    tmp_path = f"/tmp/uploads/{uuid.uuid4()}{suffix}"
+    os.makedirs("/tmp/uploads", exist_ok=True)
+    with open(tmp_path, "wb") as f:
+        f.write(await file.read())
 
     try:
         # Fingerprint it
@@ -99,42 +108,91 @@ async def ingest_song(file: UploadFile = File(...)):
 # RECOGNISE A CLIP
 # ─────────────────────────────────────────────
 
-@app.post("/recognize")
+@app.post("/recognize", status_code=202)
 async def recognize(file: UploadFile = File(...)):
     """
     Upload a short audio clip and get back the matching song.
     """
 
+    # suffix = os.path.splitext(file.filename)[1]
+    # with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+    #     contents = await file.read()
+    #     tmp.write(contents)
+    #     tmp_path = tmp.name
+
+    # try:
+    #     samples, sr = load_audio(tmp_path)
+    #     spec, hop, sr = compute_spectrogram(samples, sr)
+    #     peaks = extract_peaks(spec, sr, hop)
+    #     hashes = generate_hashes(peaks)
+
+    #     result = match(hashes)
+
+    #     if not result:
+    #         raise HTTPException(status_code=404, detail="No match found")
+
+    #     return {
+    #         "title": result["song"]["title"],
+    #         "artist": result["song"]["artist"],
+    #         "score": result["score"],
+    #         "offset_seconds": result["offset_seconds"]
+    #     }
+
+    # finally:
+    #     os.unlink(tmp_path)
+    #     # clean up converted wav if it exists
+    #     wav_path = tmp_path.replace(".webm", ".wav")
+    #     if os.path.exists(wav_path):
+    #         os.unlink(wav_path)
+
+    """
+    Accept an audio clip and immediately return a job_id.
+    202 Accepted means "got it, working on it".
+    """
+    # suffix = os.path.splitext(file.filename)[1]
+    # with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+    #     contents = await file.read()
+    #     tmp.write(contents)
+    #     tmp_path = tmp.name
+
     suffix = os.path.splitext(file.filename)[1]
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        contents = await file.read()
-        tmp.write(contents)
-        tmp_path = tmp.name
+    tmp_path = f"/tmp/uploads/{uuid.uuid4()}{suffix}"
+    os.makedirs("/tmp/uploads", exist_ok=True)
+    with open(tmp_path, "wb") as f:
+        f.write(await file.read())
 
-    try:
-        samples, sr = load_audio(tmp_path)
-        spec, hop, sr = compute_spectrogram(samples, sr)
-        peaks = extract_peaks(spec, sr, hop)
-        hashes = generate_hashes(peaks)
+    # Hand off to Celery — don't wait for it to finish
+    task = recognize_task.delay(tmp_path)
 
-        result = match(hashes)
+    return {"job_id": task.id}
 
-        if not result:
-            raise HTTPException(status_code=404, detail="No match found")
 
-        return {
-            "title": result["song"]["title"],
-            "artist": result["song"]["artist"],
-            "score": result["score"],
-            "offset_seconds": result["offset_seconds"]
-        }
+# ─────────────────────────────────────────────
+# POLL FOR RESULTS
+# ─────────────────────────────────────────────
 
-    finally:
-        os.unlink(tmp_path)
-        # clean up converted wav if it exists
-        wav_path = tmp_path.replace(".webm", ".wav")
-        if os.path.exists(wav_path):
-            os.unlink(wav_path)
+@app.get("/results/{job_id}")
+def get_result(job_id: str):
+    """
+    Frontend polls this endpoint until status is 'found' or 'not_found'.
+    """
+    task = AsyncResult(job_id, app=celery_app)
+    print(f"Task state: {task.state}, result: {task.result}")
+
+    if task.state == "PENDING":
+        return {"status": "pending"}
+
+    if task.state in ("LOADING", "FINGERPRINTING", "MATCHING"):
+        # Return the progress message we set in update_state
+        return {"status": "processing", "message": task.info.get("status", "")}
+
+    if task.state == "FAILURE":
+        return {"status": "error", "message": str(task.info)}
+
+    if task.state == "SUCCESS":
+        return task.result
+
+    return {"status": "unknown"}
 
 
 # ─────────────────────────────────────────────

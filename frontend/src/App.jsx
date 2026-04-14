@@ -151,35 +151,96 @@ export default function App() {
   // ── Recognize ──────────────────────────────
 
   async function recognize(blob, filename) {
+    // try {
+    //   const formData = new FormData()
+    //   // "file" must match the parameter name in FastAPI: file: UploadFile = File(...)
+    //   formData.append("file", blob, filename)
+
+    //   const res = await fetch(`${API}/recognize`, {
+    //     method: "POST",
+    //     body: formData
+    //   })
+
+    //   if (res.status === 404) {
+    //     setError("No match found. Try a longer clip or add more songs.")
+    //     setState("error")
+    //     setStatus("")
+    //     return
+    //   }
+
+    //   if (!res.ok) throw new Error("Server error")
+
+    //   const data = await res.json()
+    //   setResult(data)
+    //   setState("result")
+    //   setStatus("")
+
+    // } catch {
+    //   setError("Something went wrong. Is the backend running?")
+    //   setState("error")
+    //   setStatus("")
+    // }
+
     try {
       const formData = new FormData()
-      // "file" must match the parameter name in FastAPI: file: UploadFile = File(...)
       formData.append("file", blob, filename)
 
+      // Step 1 — submit job
       const res = await fetch(`${API}/recognize`, {
         method: "POST",
         body: formData
       })
 
-      if (res.status === 404) {
+      if (!res.ok) throw new Error("Server error")
+      const { job_id } = await res.json()
+
+      // Step 2 — poll for result
+      setStatus("Identifying...")
+      const result = await pollResult(job_id)
+
+      if (!result) {
         setError("No match found. Try a longer clip or add more songs.")
         setState("error")
         setStatus("")
         return
       }
 
-      if (!res.ok) throw new Error("Server error")
-
-      const data = await res.json()
-      setResult(data)
+      setResult(result)
       setState("result")
       setStatus("")
 
-    } catch {
+    } catch (err) {
+      console.error("Recognize error:", err)
       setError("Something went wrong. Is the backend running?")
       setState("error")
       setStatus("")
     }
+  }
+
+  async function pollResult(job_id) {
+    console.log("Starting polling for job:", job_id)
+    const MAX_ATTEMPTS = 30  // 30 seconds timeout
+    const INTERVAL_MS = 1000
+
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      await new Promise(r => setTimeout(r, INTERVAL_MS))
+      console.log(`Poll attempt ${i + 1} for ${job_id}`)
+
+      const res = await fetch(`${API}/results/${job_id}`)
+      const data = await res.json()
+      console.log("Poll response:", data)
+
+      if (data.status === "found") return data
+      if (data.status === "not_found") return null
+      if (data.status === "error") throw new Error(data.message)
+
+      // Update status message based on progress
+      if (data.status === "processing" && data.message) {
+        setStatus(data.message)
+      }
+    }
+
+    throw new Error("Timed out waiting for result")
   }
 
   // ── Ingest a new song ──────────────────────
