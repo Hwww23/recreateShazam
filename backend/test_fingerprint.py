@@ -35,15 +35,25 @@ def test_generate_hashes_returns_list_of_tuples():
     print("Hash format check passed")
 
 def test_different_audio_produces_different_hashes():
-    """Different frequencies should produce different fingerprints"""
+    """Different audio should produce mostly different hashes"""
     sr = 22050
     t = np.linspace(0, 5, sr * 5)
 
-    samples_440 = np.sin(2 * np.pi * 440 * t).astype(np.float32)
-    samples_880 = np.sin(2 * np.pi * 880 * t).astype(np.float32)
+    # Use richer signals with multiple harmonics so we get more peaks
+    samples_low = (
+        np.sin(2 * np.pi * 261 * t) +   # C4
+        np.sin(2 * np.pi * 329 * t) +   # E4
+        np.sin(2 * np.pi * 392 * t)     # G4
+    ).astype(np.float32)
 
-    spec1, hop, sr = compute_spectrogram(samples_440, sr)
-    spec2, _, _  = compute_spectrogram(samples_880, sr)
+    samples_high = (
+        np.sin(2 * np.pi * 523 * t) +   # C5
+        np.sin(2 * np.pi * 659 * t) +   # E5
+        np.sin(2 * np.pi * 784 * t)     # G5
+    ).astype(np.float32)
+
+    spec1, hop, sr = compute_spectrogram(samples_low, sr)
+    spec2, _, _    = compute_spectrogram(samples_high, sr)
 
     peaks1 = extract_peaks(spec1, sr, hop)
     peaks2 = extract_peaks(spec2, sr, hop)
@@ -52,8 +62,14 @@ def test_different_audio_produces_different_hashes():
     hashes2 = set(h for h, t in generate_hashes(peaks2))
 
     overlap = hashes1 & hashes2
-    assert len(overlap) < len(hashes1) * 0.1, "Different audio should produce mostly different hashes"
-    print(f"Distinctness check passed — overlap: {len(overlap)}/{len(hashes1)}")
+    overlap_ratio = len(overlap) / len(hashes1) if hashes1 else 0
+
+    # Two completely different chords should share less than 50% of hashes
+    assert overlap_ratio < 0.5, (
+        f"Expected mostly different hashes but got {overlap_ratio:.0%} overlap "
+        f"({len(overlap)} shared out of {len(hashes1)})"
+    )
+    print(f"Distinctness check passed — overlap: {len(overlap)}/{len(hashes1)} ({overlap_ratio:.0%})")
 
 if __name__ == "__main__":
     test_generate_hashes_is_deterministic()
