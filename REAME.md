@@ -152,3 +152,7 @@ Each shard receives ~25% of fingerprints (SHA1 uniform distribution).
 Queries only hit the shard matching the hash prefix — no broadcast needed.
 Redis cache serves repeated lookups in microseconds, bypassing all shards.
 ```
+
+# SoundMatch 🎵
+
+![CI](https://github.com/Hwww23/recreateShazam/actions/workflows/ci.yml/badge.svg)
