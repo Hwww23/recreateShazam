@@ -55,9 +55,8 @@ jobs:
           SHARD_1_URL: postgresql://postgres:postgres@localhost:5432/soundmatch_test
           SHARD_2_URL: postgresql://postgres:postgres@localhost:5432/soundmatch_test
           SHARD_3_URL: postgresql://postgres:postgres@localhost:5432/soundmatch_test
-        run: psql -U postgres -h localhost -d soundmatch_test -f init.sql
-        env:
           PGPASSWORD: postgres
+        run: psql -U postgres -h localhost -d soundmatch_test -f init.sql
 
       - name: Run tests
         working-directory: backend
